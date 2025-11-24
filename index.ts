@@ -128,9 +128,12 @@ function rewriteHtml(html: string, baseUrl: string): Promise<string> {
 		const handler = new DomHandler((err, dom) => {
 			if (err) return resolve(html);
 
-			const rewriteAttr = (name: string, attr: string) => {
+
+			const rewriteAttr = (name: string | null, attr: string) => {
 				DomUtils.findAll(
-					(el) => el.type === "tag" && el.name === name && el.attribs?.[attr],
+					(el) =>
+						el.type === "tag" &&
+						((name ? el.name === name && el.attribs?.[attr] : el.attribs?.[attr])),
 					dom
 				).forEach((el) => {
 					const abs = absolutify(el.attribs[attr], baseUrl);
@@ -138,10 +141,12 @@ function rewriteHtml(html: string, baseUrl: string): Promise<string> {
 				});
 			};
 
-			rewriteAttr("script", "src");
-			rewriteAttr("img", "src");
-			rewriteAttr("link", "href");
-			rewriteAttr("a", "href");
+
+			rewriteAttr(null, "src");
+			rewriteAttr(null, "href");
+			rewriteAttr("video", "poster");
+			rewriteAttr("object", "data");
+			rewriteAttr("area", "href");
 			rewriteAttr("form", "action");
 
 			resolve(serialize(dom, { encodeEntities: false }));
@@ -224,26 +229,31 @@ Bun.serve({
 <script>
 
 
-(() => {
-    const oldFetch = window.fetch;
+    const oldOpen = XMLHttpRequest.prototype.open;
     const proxy = "/proxy?q=${currentUrl}";
 
+    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+        // Encode the URL and prepend the proxy
+        const proxiedUrl = proxy + encodeURIComponent(url);
+
+        console.log(proxiedUrl); // optional: debug
+        // Call original open with proxied URL
+        return oldOpen.call(this, method, proxiedUrl, async, user, password);
+    };    const oldFetch = window.fetch;
+
     window.fetch = function(input, init) {
-        // Case 1 — Request-like object
         if (input && typeof input === "object" && "url" in input) {
             const proxied = proxy + encodeURIComponent(input.url);
             const newReq = new Request(proxied, input);
             return oldFetch(newReq, init);
         }
 
-        // Case 2 — string / URL (keep raw string, don't resolve against localhost)
         const url = typeof input === "string" ? input : input.toString();
         const proxied = proxy + encodeURIComponent(url);
 
         console.log(proxied);
         return oldFetch(proxied, init);
     };
-})();
 
 
 </script>
