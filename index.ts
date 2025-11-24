@@ -1,4 +1,5 @@
 import { Parser } from "htmlparser2";
+import ipaddr from "ipaddr.js";
 import { DomHandler, DomUtils } from "htmlparser2";
 import serialize from "dom-serializer";
 
@@ -14,16 +15,15 @@ function isUrl(u: string): boolean {
 
 		if (!["http:", "https:"].includes(parsed.protocol)) return false;
 
-		// Prevent internal IPs / localhost SSRF
 		const hostname = parsed.hostname;
-		if (
-			hostname === "localhost" ||
-			hostname.startsWith("127.") ||
-			hostname.startsWith("10.") ||
-			hostname.startsWith("172.16.") ||
-			hostname.startsWith("192.168.")
-		) {
-			return false;
+
+		if (ipaddr.isValid(hostname)) {
+			const addr = ipaddr.parse(hostname);
+			if (addr.range() === "private" || addr.range() === "loopback" || addr.range() === "linkLocal") {
+				return false;
+			}
+		} else {
+			if (hostname === "localhost") return false;
 		}
 
 		return true;
@@ -218,7 +218,38 @@ Bun.serve({
 		// HTML
 		if (ct.includes("text/html")) {
 			const raw = await upstream.text();
-			const rewritten = await rewriteHtml(raw, finalUrl);
+			let rewritten = await rewriteHtml(raw, finalUrl);
+			if (rewritten.includes('</head>')) {
+				rewritten = rewritten.replace('</head>', `
+<script>
+
+
+(() => {
+    const oldFetch = window.fetch;
+    const proxy = "/proxy?q=${currentUrl}";
+
+    window.fetch = function(input, init) {
+        // Case 1 — Request-like object
+        if (input && typeof input === "object" && "url" in input) {
+            const proxied = proxy + encodeURIComponent(input.url);
+            const newReq = new Request(proxied, input);
+            return oldFetch(newReq, init);
+        }
+
+        // Case 2 — string / URL (keep raw string, don't resolve against localhost)
+        const url = typeof input === "string" ? input : input.toString();
+        const proxied = proxy + encodeURIComponent(url);
+
+        console.log(proxied);
+        return oldFetch(proxied, init);
+    };
+})();
+
+
+</script>
+			`
+					+ '</head>');
+			}
 			return new Response(rewritten, { status: upstream.status, headers });
 		}
 
