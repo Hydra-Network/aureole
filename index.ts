@@ -40,7 +40,7 @@ function isUrl(u: string): boolean {
 }
 
 function proxify(url: string): string {
-	return url.startsWith("data:") ? url : `/proxy?q=${encodeURIComponent(url)}`;
+	return url.match(/^(#|about:|data:|blob:|mailto:|javascript:|{|\*)/) ? url : `/proxy?q=${encodeURIComponent(url)}`;
 }
 
 function absolutify(url: string, base: string) {
