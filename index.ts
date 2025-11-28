@@ -278,7 +278,7 @@ Bun.serve({
   const oldFetch = window.fetch;
 
 function proxify(url) {
-	return url.startsWith("data:") ? url : \`/proxy?q=\${encodeURIComponent(url)}\`;
+	return url.match(/^(#|about:|data:|blob:|mailto:|javascript:|{|\*)/) ? url : \`/proxy?q=\${encodeURIComponent(url)}\`;
 }
 
   XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
