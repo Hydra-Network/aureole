@@ -13,9 +13,12 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "acorn": "^8.15.0",
+    "acorn-walk": "^8.3.4",
     "domutils": "^3.2.2",
     "express": "^5.1.0",
     "htmlparser2": "^10.0.0",
-    "ipaddr.js": "^2.2.0"
+    "ipaddr.js": "^2.2.0",
+    "magic-string": "^0.30.21"
   }
 }
