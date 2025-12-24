@@ -1,21 +1,22 @@
 import * as acorn from 'acorn';
 import { full as walk } from 'acorn-walk';
+import { isUrl, proxify } from "./utils.ts"
 import MagicString from 'magic-string';
 import { getPatches } from "./patches";
 
-function proxify(url: string | null | undefined, baseUrl: string): string {
-	if (!url || typeof url !== 'string') return url || '';
-	if (url.startsWith('/proxy?q=')) return url;
-
-	if (/^(#|about:|data:|blob:|mailto:|javascript:|tel:|sms:|\{|\*)/.test(url)) return url;
-
-	try {
-		const absolute = new URL(url, baseUrl).href;
-		return `/proxy?q=${encodeURIComponent(absolute)}`;
-	} catch (e) {
-		return url;
-	}
-}
+// function proxify(url: string | null | undefined, baseUrl: string): string {
+// 	if (!url || typeof url !== 'string') return url || '';
+// 	if (url.startsWith('/proxy?q=')) return url;
+//
+// 	if (/^(#|about:|data:|blob:|mailto:|javascript:|tel:|sms:|\{|\*)/.test(url)) return url;
+//
+// 	try {
+// 		const absolute = new URL(url, baseUrl).href;
+// 		return `/proxy?q=${encodeURIComponent(absolute)}`;
+// 	} catch (e) {
+// 		return url;
+// 	}
+// }
 
 export function rewriteJs(js: string, baseUrl: string, host: string, inline = false): string {
 	const s = new MagicString(js);
@@ -49,7 +50,7 @@ export function rewriteJs(js: string, baseUrl: string, host: string, inline = fa
 		if (node.type === 'ImportExpression') {
 			s.overwrite(node.start, node.start + 6, 'proxyImport');
 			if (node.source.type === 'Literal' && typeof node.source.value === 'string') {
-				s.overwrite(node.source.start + 1, node.source.end - 1, proxify(node.source.value, baseUrl));
+				s.overwrite(node.source.start + 1, node.source.end - 1, proxify(node.source.value));
 			}
 		}
 
@@ -58,7 +59,7 @@ export function rewriteJs(js: string, baseUrl: string, host: string, inline = fa
 			if (node.callee.type === 'Identifier' && funcNames.includes(node.callee.name)) {
 				node.arguments.forEach((arg: any) => {
 					if (arg.type === 'Literal' && typeof arg.value === 'string') {
-						s.overwrite(arg.start + 1, arg.end - 1, proxify(arg.value, baseUrl));
+						s.overwrite(arg.start + 1, arg.end - 1, proxify(arg.value));
 					}
 				});
 			}
@@ -68,7 +69,7 @@ export function rewriteJs(js: string, baseUrl: string, host: string, inline = fa
 				node.callee.property.type === 'Identifier' && node.callee.property.name === 'sendBeacon') {
 				const arg = node.arguments[0];
 				if (arg && arg.type === 'Literal' && typeof arg.value === 'string') {
-					s.overwrite(arg.start + 1, arg.end - 1, proxify(arg.value, baseUrl));
+					s.overwrite(arg.start + 1, arg.end - 1, proxify(arg.value));
 				}
 			}
 		}
@@ -78,7 +79,7 @@ export function rewriteJs(js: string, baseUrl: string, host: string, inline = fa
 			if (node.callee.type === 'Identifier' && classNames.includes(node.callee.name)) {
 				const arg = node.arguments[0];
 				if (arg && arg.type === 'Literal' && typeof arg.value === 'string') {
-					s.overwrite(arg.start + 1, arg.end - 1, proxify(arg.value, baseUrl));
+					s.overwrite(arg.start + 1, arg.end - 1, proxify(arg.value));
 				}
 			}
 		}
@@ -86,14 +87,15 @@ export function rewriteJs(js: string, baseUrl: string, host: string, inline = fa
 		// Imports/Exports: import {x} from "..."
 		if (node.type === 'ImportDeclaration' || node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') {
 			if (node.source && node.source.type === 'Literal' && typeof node.source.value === 'string') {
-				s.overwrite(node.source.start + 1, node.source.end - 1, proxify(node.source.value, baseUrl));
+				s.overwrite(node.source.start + 1, node.source.end - 1, proxify(node.source.value));
 			}
 		}
 
 		// proxify baseurl
 		if (node.type === 'Literal' && node.value === baseUrl) {
-			s.overwrite(node.start + 1, node.end - 1, proxify(baseUrl, baseUrl));
+			s.overwrite(node.start + 1, node.end - 1, proxify(baseUrl));
 		}
+
 	});
 
 	return inline ? s.toString() : getPatches() + s.toString();

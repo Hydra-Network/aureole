@@ -1,6 +1,9 @@
 
 export function getPatches() {
 	return `
+if (!window.patched) {
+    window.patched = true;
+
     [window, document].forEach(targetParent => {
         Object.defineProperty(targetParent, 'proxyLocation', {
             get: function() {
@@ -51,52 +54,41 @@ export function getPatches() {
             configurable: true
         });
     });
-  const oldOpen = XMLHttpRequest.prototype.open;
-  const proxy = "/proxy?q=";
-  const oldFetch = window.fetch;
 
-function absolutify(url) {
-	try {
-		return new URL(url, window.location.hostname).toString();
-	} catch {
-		return url;
-	}
-}
+    const oldOpen = XMLHttpRequest.prototype.open;
+    const oldFetch = window.fetch;
 
+    function proxify(url) {
+        url = decodeURIComponent(url);
+        const isExcluded = /^(#|about:|data:|blob:|mailto:|javascript:|\\{|\\*)/.test(url);
+        const isProxied = url.includes("/proxy?q=");
 
-function proxify(url) {
-    url = decodeURIComponent(url);
-
-    const isExcluded = /^(#|about:|data:|blob:|mailto:|javascript:|\\{|\\*)/.test(url);
-    const isProxied = url.includes("/proxy?q=");
-
-    return isExcluded || isProxied 
-        ? url 
-        : \`/proxy?q=\${encodeURIComponent(url)}\`;
-}
-
-
-  XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-    return oldOpen.call(this, method, proxify(url), async, user, password);
-  };    
-
-  window.proxyImport = (url) => {
-return import(proxify(url))
-}
-
-  window.fetch = function(input, init) {
-    if (input && typeof input === "object" && "url" in input) {
-      const newReq = new Request(proxify(input.url), input);
-      return oldFetch(newReq, init);
+        return isExcluded || isProxied 
+            ? url 
+            : "/proxy?q=" + encodeURIComponent(url);
     }
 
-	  // handle absolute urls
-    let url = typeof input === "string" ? input : input.toString();
-	  try {
-	    new URL(url);
-	  } catch(e) {
-	    url = new URL(url, location.origin).href;
-	  }
-	  return oldFetch(proxify(url), init);
-  };`
+    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+        return oldOpen.call(this, method, proxify(url), async, user, password);
+    };    
+
+    window.proxyImport = (url) => {
+        return import(proxify(url));
+    };
+
+    window.fetch = function(input, init) {
+        if (input && typeof input === "object" && "url" in input) {
+            const newReq = new Request(proxify(input.url), input);
+            return oldFetch(newReq, init);
+        }
+
+        let url = typeof input === "string" ? input : input.toString();
+        try {
+            new URL(url);
+        } catch(e) {
+            url = new URL(url, location.origin).href;
+        }
+        return oldFetch(proxify(url), init);
+    };
+}`
 }
