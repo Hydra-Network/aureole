@@ -18,7 +18,7 @@ import { getPatches } from "./patches";
 // 	}
 // }
 
-export function rewriteJs(js: string, baseUrl: string, host: string, inline = false): string {
+export function rewriteJs(js: string, baseUrl: string, host: string): string {
 	const s = new MagicString(js);
 
 	const ast = acorn.parse(js, {
@@ -98,5 +98,5 @@ export function rewriteJs(js: string, baseUrl: string, host: string, inline = fa
 
 	});
 
-	return inline ? s.toString() : getPatches() + s.toString();
+	return s.toString();
 }

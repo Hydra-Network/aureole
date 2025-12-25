@@ -41,7 +41,7 @@ export function rewriteHtml(html: string, baseUrl: string, host: string): Promis
 				(el) => el.name === "script" && !el.attribs?.src,
 				dom,
 			).forEach((el) => {
-				const rewritten = rewriteJs(DomUtils.textContent(el), baseUrl, host, true);
+				const rewritten = rewriteJs(DomUtils.textContent(el), baseUrl, host);
 				// Replace children with a single text node containing rewritten JS
 				el.children = [
 					{
