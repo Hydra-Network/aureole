@@ -19,6 +19,8 @@
     "express": "^5.1.0",
     "htmlparser2": "^10.0.0",
     "ipaddr.js": "^2.2.0",
-    "magic-string": "^0.30.21"
+    "magic-string": "^0.30.21",
+    "meriyah": "^7.0.0",
+    "zimmerframe": "^1.1.4"
   }
 }

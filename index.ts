@@ -1,8 +1,7 @@
-import { rewriteJs } from "./src/js.ts"
-import { rewriteCss } from "./src/css.ts"
-import { absolutify, isUrl } from "./src/utils.ts"
-import { rewriteHtml } from "./src/html.ts"
-
+import { rewriteJs } from "./src/js.ts";
+import { rewriteCss } from "./src/css.ts";
+import { absolutify, isUrl } from "./src/utils.ts";
+import { rewriteHtml } from "./src/html.ts";
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -65,7 +64,6 @@ function removeCsp(upstream: Response): Headers {
 	});
 	return headers;
 }
-
 
 /* -------------------------------------------------------------------------- */
 /*                                    SERVER                                  */
@@ -131,6 +129,7 @@ Bun.serve({
 		/* ---------------------------- Handle content ---------------------------- */
 
 		const ct = upstream.headers.get("content-type") || "";
+		const sfd = upstream.headers.get("sec-fetch-dest") || "";
 		const headers = removeCsp(upstream);
 
 		// HTML
@@ -142,7 +141,7 @@ Bun.serve({
 		}
 
 		// CSS
-		if (ct.includes("text/css") || currentUrl.endsWith(".css")) {
+		if (sfd.includes("style") || currentUrl.endsWith(".css")) {
 			const raw = await upstream.text();
 			const rewritten = rewriteCss(raw, currentUrl);
 			headers.set("Content-Type", "text/css");
@@ -150,7 +149,7 @@ Bun.serve({
 		}
 
 		// JS
-		if (ct.includes("javascript") || currentUrl.endsWith(".js")) {
+		if (sfd.includes("script") || currentUrl.endsWith(".js")) {
 			const raw = await upstream.text();
 			let rewritten = rewriteJs(raw, currentUrl, host);
 			headers.set("Content-Type", "application/javascript");

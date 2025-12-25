@@ -1,13 +1,17 @@
-import { rewriteJs } from "./js.ts"
-import { rewriteCss } from "./css.ts"
-import { proxify, absolutify } from "./utils.ts"
-import { getPatches } from "./patches.ts"
+import { rewriteJs } from "./js.ts";
+import { rewriteCss } from "./css.ts";
+import { proxify, absolutify } from "./utils.ts";
+import { getPatches } from "./patches.ts";
 
 import { Parser } from "htmlparser2";
 import { DomHandler, DomUtils } from "htmlparser2";
 import serialize from "dom-serializer";
 
-export function rewriteHtml(html: string, baseUrl: string, host: string): Promise<string> {
+export function rewriteHtml(
+	html: string,
+	baseUrl: string,
+	host: string,
+): Promise<string> {
 	return new Promise((resolve) => {
 		const handler = new DomHandler((err, dom) => {
 			if (err) return resolve(html);
@@ -38,7 +42,7 @@ export function rewriteHtml(html: string, baseUrl: string, host: string): Promis
 			rewriteAttr("form", "action");
 
 			DomUtils.findAll(
-				(el) => el.name === "script" && !el.attribs?.src,
+				(el) => el.name === "script" && !el.attribs?.src && el.attribs.type != "application/json" && el.attribs.type != "application/ld+json",
 				dom,
 			).forEach((el) => {
 				const rewritten = rewriteJs(DomUtils.textContent(el), baseUrl, host);
@@ -52,10 +56,7 @@ export function rewriteHtml(html: string, baseUrl: string, host: string): Promis
 				];
 			});
 
-			DomUtils.findAll(
-				(el) => el.name === "style",
-				dom,
-			).forEach((el) => {
+			DomUtils.findAll((el) => el.name === "style", dom).forEach((el) => {
 				const rewritten = rewriteCss(DomUtils.textContent(el), baseUrl);
 				// Replace children with a single text node containing rewritten JS
 				el.children = [
@@ -67,7 +68,7 @@ export function rewriteHtml(html: string, baseUrl: string, host: string): Promis
 				];
 			});
 
-			let rewritten = serialize(dom, { encodeEntities: false })
+			let rewritten = serialize(dom, { encodeEntities: false });
 			if (rewritten.includes("</head>")) {
 				rewritten = rewritten.replace(
 					"</head>",

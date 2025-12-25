@@ -1,6 +1,5 @@
-
 export function getPatches() {
-	return `
+  return `
 if (!window.patched) {
     window.patched = true;
 
@@ -90,5 +89,5 @@ if (!window.patched) {
         }
         return oldFetch(proxify(url), init);
     };
-}`
+}`;
 }

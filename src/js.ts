@@ -1,5 +1,5 @@
-import * as acorn from 'acorn';
-import { full as walk } from 'acorn-walk';
+import { parse } from 'meriyah';
+import { walk } from 'zimmerframe';
 import { isUrl, proxify } from "./utils.ts"
 import MagicString from 'magic-string';
 import { getPatches } from "./patches";
@@ -21,8 +21,7 @@ import { getPatches } from "./patches";
 export function rewriteJs(js: string, baseUrl: string, host: string): string {
 	const s = new MagicString(js);
 
-	const ast = acorn.parse(js, {
-		ecmaVersion: 'latest',
+	const ast = parse(js, {
 		sourceType: 'module',
 		preserveParens: false,
 	}) as any;
@@ -32,7 +31,7 @@ export function rewriteJs(js: string, baseUrl: string, host: string): string {
 	const funcNames = ['fetch', 'importScripts', 'proxyImport'];
 	const classNames = ['Request', 'URL', 'EventSource', 'Worker', 'SharedWorker'];
 
-	walk(ast, (node: any) => {
+	walk(ast as node, {}, (node: any) => {
 		if (node.type === 'MemberExpression') {
 			// window.location -> window.proxyLocation
 			if (node.object.type === 'Identifier' && node.object.name === 'window' &&
