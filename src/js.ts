@@ -42,12 +42,6 @@ export function rewriteJs(js: string, baseUrl: string, host: string): string {
 				name: 'proxyImport'
 			};
 			node.arguments = [node.source];
-			delete node.source;
-			const arg = node.arguments[0];
-			if (arg && arg.type === 'Literal' && typeof arg.value === 'string') {
-				arg.value = proxify(arg.value);
-				arg.raw = `'${arg.value}'`;
-			}
 			next()
 		},
 
@@ -61,16 +55,16 @@ export function rewriteJs(js: string, baseUrl: string, host: string): string {
 					}
 				});
 			}
-							// navigator.sendBeacon("...")
-							if (node.callee.type === 'MemberExpression' &&
-								node.callee.object.type === 'Identifier' && node.callee.object.name === 'navigator' &&
-								node.callee.property.type === 'Identifier' && node.callee.property.name === 'sendBeacon') {
-								const arg = node.arguments[0];
-								if (arg && arg.type === 'Literal' && typeof arg.value === 'string') {
-									arg.value = proxify(arg.value);
-									arg.raw = `'${arg.value}'`;
-								}
-							}			next()
+			// navigator.sendBeacon("...")
+			if (node.callee.type === 'MemberExpression' &&
+				node.callee.object.type === 'Identifier' && node.callee.object.name === 'navigator' &&
+				node.callee.property.type === 'Identifier' && node.callee.property.name === 'sendBeacon') {
+				const arg = node.arguments[0];
+				if (arg && arg.type === 'Literal' && typeof arg.value === 'string') {
+					arg.value = proxify(arg.value);
+					arg.raw = `'${arg.value}'`;
+				}
+			} next()
 		},
 
 		// Constructor Calls: new Worker("..."), new URL("...")
