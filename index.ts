@@ -1,16 +1,17 @@
+import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
 import { rewriteJs } from "./src/js.ts";
 import { rewriteCss } from "./src/css.ts";
 import { absolutify, isUrl } from "./src/utils.ts";
 import { rewriteHtml } from "./src/html.ts";
 
-import { serveStatic } from 'hono/bun'
-
-
 const PORT = Number(process.env.PORT || 8080);
+const app = new Hono();
 
 /* -------------------------------------------------------------------------- */
 /*                                UTILITIES                                   */
 /* -------------------------------------------------------------------------- */
+
 function fixHeaders(req: Request): Record<string, string> {
 	const headers: Record<string, string> = {};
 
@@ -36,17 +37,7 @@ function fixHeaders(req: Request): Record<string, string> {
 		headers["user-agent"] =
 			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 	}
-	if (!headers["accept"]) {
-		headers["accept"] =
-			"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
-	}
-	if (!headers["accept-language"]) {
-		headers["accept-language"] = "en-US,en;q=0.9";
-	}
-	if (!headers["accept-encoding"]) {
-		headers["accept-encoding"] = "gzip, deflate, br";
-	}
-
+	headers["accept-encoding"] = "identity";
 	return headers;
 }
 
@@ -69,112 +60,85 @@ function removeCsp(upstream: Response): Headers {
 	return headers;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                    SERVER                                  */
-/* -------------------------------------------------------------------------- */
 
-Bun.serve({
-	port: PORT,
-	async fetch(req) {
-		const url = new URL(req.url);
+app.all("/proxy", async (c) => {
+	const target = c.req.query("q");
+	if (!target) {
+		return c.text("Missing 'q' query parameter", 400);
+	}
 
-		if (url.pathname !== "/proxy") {
-			const publicPath = url.pathname === "/" ? "/index.html" : url.pathname;
-			const file = Bun.file("./public" + publicPath);
+	const finalUrl = isUrl(target)
+		? target
+		: isUrl("http://" + target)
+			? "http://" + target
+			: null;
 
-			if (await file.exists()) return new Response(file);
+	if (!finalUrl) {
+		return c.text("Invalid or blocked URL", 400);
+	}
 
-			return new Response("Not found", { status: 404 });
-		}
+	let currentUrl = finalUrl;
+	let host = new URL(currentUrl).hostname;
 
-		const target = url.searchParams.get("q");
-		if (!target) {
-			return new Response("Missing 'q' query parameter", { status: 400 });
-		}
+	const options: RequestInit = {
+		method: c.req.method,
+		headers: fixHeaders(c.req.raw),
+	};
 
-		const finalUrl = isUrl(target)
-			? target
-			: isUrl("http://" + target)
-				? "http://" + target
-				: null;
+	if (!["GET", "HEAD"].includes(c.req.method)) {
+		options.body = await c.req.text();
+	}
 
-		if (!finalUrl) {
-			return new Response("Invalid or blocked URL", { status: 400 });
-		}
+	let upstream: Response;
+	let redirects = 0;
+	const maxRedirects = 10;
 
-		/* ----------------------------- Fetch upstream ---------------------------- */
-
-		let upstream: Response = new Response("Internal Server Error", {
-			status: 500,
-		});
-		let currentUrl = finalUrl;
-		let host = new URL(currentUrl).hostname;
-
-		const options: RequestInit = {
-			method: req.method,
-			mode: (req.headers.get("Sec-Fetch-Mode") as RequestMode) || "cors",
-			headers: fixHeaders(req),
-		};
-
-		if (!["GET", "HEAD"].includes(req.method)) {
-			options.body = await req.text();
-		}
-
-		let redirects = 0;
-		const maxRedirects = 10;
-
-		while (redirects < maxRedirects) {
-			upstream = await fetch(currentUrl, { ...options, redirect: "manual" });
-
-			if (upstream.status < 300 || upstream.status >= 400) break;
-
+	while (true) {
+		upstream = await fetch(currentUrl, { ...options, redirect: "manual" });
+		if (upstream.status >= 300 && upstream.status < 400 && redirects < maxRedirects) {
 			const loc = upstream.headers.get("location");
-			if (!loc) break;
-
-			currentUrl = absolutify(loc, currentUrl);
-			redirects++;
+			if (loc) {
+				currentUrl = absolutify(loc, currentUrl);
+				redirects++;
+				continue;
+			}
 		}
+		break;
+	}
 
-		/* ---------------------------- Handle content ---------------------------- */
+	const ct = upstream.headers.get("content-type") || "";
+	const sfd = c.req.header("Sec-Fetch-Dest") || "";
+	const headers = removeCsp(upstream);
 
+	if (ct.includes("text/html")) {
+		const raw = await upstream.text();
+		const rewritten = await rewriteHtml(raw, finalUrl, host);
+		return c.html(rewritten, { status: upstream.status, headers: Object.fromEntries(headers) });
+	}
 
-		const ct = upstream.headers.get("content-type") || "";
-		const sfd = req.headers.get("Sec-Fetch-Dest") || "";
-		const headers = removeCsp(upstream);
+	if (sfd.includes("style") || ct.includes("text/css")) {
+		const raw = await upstream.text();
+		const rewritten = rewriteCss(raw, currentUrl);
+		headers.set("Content-Type", "text/css");
+		return new Response(rewritten, { status: upstream.status, headers });
+	}
 
-		// HTML
-		if (ct.includes("text/html")) {
-			const raw = await upstream.text();
-			let rewritten = await rewriteHtml(raw, finalUrl, host);
+	if (sfd.includes("script") || ct.includes("javascript")) {
+		const raw = await upstream.text();
+		const rewritten = rewriteJs(raw, currentUrl, host);
+		headers.set("Content-Type", "application/javascript");
+		return new Response(rewritten, { status: upstream.status, headers });
+	}
 
-			return new Response(rewritten, { status: upstream.status, headers });
-		}
-
-		// CSS
-		if (sfd.includes("style")) {
-			const raw = await upstream.text();
-			const rewritten = rewriteCss(raw, currentUrl);
-			headers.set("Content-Type", "text/css");
-			return new Response(rewritten, { status: upstream.status, headers });
-		}
-
-		// JS
-		if (sfd.includes("script")) {
-			const raw = await upstream.text();
-			let rewritten = rewriteJs(raw, currentUrl, host);
-			headers.set("Content-Type", "application/javascript");
-			return new Response(rewritten, {
-				status: upstream.status,
-				headers,
-			});
-		}
-
-		// Stream everything else
-		return new Response(upstream.body, {
-			status: upstream.status,
-			headers,
-		});
-	},
+	return new Response(upstream.body, {
+		status: upstream.status,
+		headers,
+	});
 });
 
-console.log("Proxy running on port", PORT);
+app.use("/*", serveStatic({ root: "./public" }));
+
+export default {
+	port: PORT,
+	fetch: app.fetch,
+};
