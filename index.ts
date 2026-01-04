@@ -11,30 +11,29 @@ import { Readable } from "stream";
 import { paymentMiddleware } from "x402-express";
 
 
-const payTo = "0xYourAddress";
-
 const app = express();
 const PORT = Number(process.env.PORT || 8080);
 
 app.use(express.text({ type: "*/*", limit: "50mb" }));
 
+if (false) {
 
-app.use(
-	paymentMiddleware(
-		payTo,
-		{
-			"GET /proxy": {
-				price: "$1",
-				network: "solana",
-				config: {
-					description: "Proxy access to any URL",
-					mimeType: "text/html",
-				}
-			},
-		}
-	),
-);
-
+	app.use(
+		paymentMiddleware(
+			"0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+			{
+				"GET /proxy": {
+					price: "$1",
+					network: "abstract-testnet",
+					config: {
+						description: "Proxy access to any URL",
+						mimeType: "text/html",
+					}
+				},
+			}
+		),
+	);
+}
 function fixHeaders(req: Request): Record<string, string> {
 	const headers: Record<string, string> = {};
 
