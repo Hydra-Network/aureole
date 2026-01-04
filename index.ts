@@ -1,178 +1,208 @@
+import express, { Request, Response as ExResponse } from "express";
 import { rewriteJs } from "./src/js.ts";
 import { rewriteCss } from "./src/css.ts";
 import { absolutify, isUrl } from "./src/utils.ts";
 import { rewriteHtml } from "./src/html.ts";
+import { Readable } from "stream";
 
+import { createPaywall } from "@x402/paywall";
+import { evmPaywall } from "@x402/paywall/evm";
+import { paymentMiddleware } from "@x402/express";
+import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
+import { registerExactEvmScheme } from "@x402/evm/exact/server";
 
+const payTo = "0xYourAddress";
+
+const app = express();
 const PORT = Number(process.env.PORT || 8080);
 
-/* -------------------------------------------------------------------------- */
-/*                                UTILITIES                                   */
-/* -------------------------------------------------------------------------- */
+app.use(express.text({ type: "*/*", limit: "50mb" }));
+
+const facilitatorClient = new HTTPFacilitatorClient({
+  url: "https://x402.org/facilitator",
+});
+
+const server = new x402ResourceServer(facilitatorClient);
+registerExactEvmScheme(server);
+
+const paywall = createPaywall()
+  .withNetwork(evmPaywall)
+  .withConfig({
+    appName: "Web Proxy",
+    testnet: true,
+  })
+  .build();
+
+app.use(
+  paymentMiddleware(
+    {
+      "GET /proxy": {
+        accepts: [
+          {
+            scheme: "exact",
+            price: "$1",
+            network: "eip155:84532",
+            payTo,
+          },
+        ],
+        description: "Proxy access to any URL",
+        mimeType: "text/html",
+      },
+    },
+    server,
+    { paywall },
+  ),
+);
+
 function fixHeaders(req: Request): Record<string, string> {
-	const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {};
 
-	req.headers.forEach((value, key) => {
-		const lowerKey = key.toLowerCase();
-		if (
-			![
-				"host",
-				"transfer-encoding",
-				"content-encoding",
-				"content-security-policy",
-				"x-content-security-policy",
-				"x-webkit-csp",
-				"origin",
-				"referer",
-			].includes(lowerKey)
-		) {
-			headers[key] = value;
-		}
-	});
+  Object.entries(req.headers).forEach(([key, value]) => {
+    const lowerKey = key.toLowerCase();
+    if (
+      ![
+        "host",
+        "transfer-encoding",
+        "content-encoding",
+        "content-security-policy",
+        "x-content-security-policy",
+        "x-webkit-csp",
+        "origin",
+        "referer",
+      ].includes(lowerKey)
+    ) {
+      if (value) headers[key] = Array.isArray(value) ? value.join(", ") : value;
+    }
+  });
 
-	if (!headers["user-agent"]) {
-		headers["user-agent"] =
-			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
-	}
-	if (!headers["accept"]) {
-		headers["accept"] =
-			"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
-	}
-	if (!headers["accept-language"]) {
-		headers["accept-language"] = "en-US,en;q=0.9";
-	}
-	if (!headers["accept-encoding"]) {
-		headers["accept-encoding"] = "gzip, deflate, br";
-	}
+  headers["user-agent"] =
+    headers["user-agent"] ||
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+  headers["accept"] =
+    headers["accept"] ||
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+  headers["accept-language"] = headers["accept-language"] || "en-US,en;q=0.9";
+  headers["accept-encoding"] =
+    headers["accept-encoding"] || "gzip, deflate, br";
 
-	return headers;
+  return headers;
 }
 
-function removeCsp(upstream: Response): Headers {
-	const headers = new Headers();
-	upstream.headers.forEach((value, key) => {
-		if (
-			![
-				"transfer-encoding",
-				"content-encoding",
-				"content-security-policy",
-				"x-content-security-policy",
-				"content-security-policy-report-only",
-				"x-webkit-csp",
-			].includes(key.toLowerCase())
-		) {
-			headers.set(key, value);
-		}
-	});
-	return headers;
+function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
+  upstreamHeaders.forEach((value, key) => {
+    const lowerKey = key.toLowerCase();
+    if (
+      ![
+        "transfer-encoding",
+        "content-encoding",
+        "content-security-policy",
+        "x-content-security-policy",
+        "content-security-policy-report-only",
+        "x-webkit-csp",
+      ].includes(lowerKey)
+    ) {
+      res.setHeader(key, value);
+    }
+  });
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                    SERVER                                  */
 /* -------------------------------------------------------------------------- */
 
-Bun.serve({
-	port: PORT,
-	async fetch(req) {
-		const url = new URL(req.url);
+app.use(express.static("public"));
 
-		if (url.pathname !== "/proxy") {
-			const publicPath = url.pathname === "/" ? "/index.html" : url.pathname;
-			const file = Bun.file("./public" + publicPath);
+app.all("/proxy", async (req: Request, res: ExResponse) => {
+  const target = req.query.q as string;
 
-			if (await file.exists()) return new Response(file);
+  if (!target) {
+    return res.status(400).send("Missing 'q' query parameter");
+  }
 
-			return new Response("Not found", { status: 404 });
-		}
+  const finalUrl = isUrl(target)
+    ? target
+    : isUrl("http://" + target)
+      ? "http://" + target
+      : null;
 
-		const target = url.searchParams.get("q");
-		if (!target) {
-			return new Response("Missing 'q' query parameter", { status: 400 });
-		}
+  if (!finalUrl) {
+    return res.status(400).send("Invalid or blocked URL");
+  }
 
-		const finalUrl = isUrl(target)
-			? target
-			: isUrl("http://" + target)
-				? "http://" + target
-				: null;
+  /* ----------------------------- Fetch upstream ---------------------------- */
 
-		if (!finalUrl) {
-			return new Response("Invalid or blocked URL", { status: 400 });
-		}
+  let currentUrl = finalUrl;
+  let host = new URL(currentUrl).hostname;
 
-		/* ----------------------------- Fetch upstream ---------------------------- */
+  const options: RequestInit = {
+    method: req.method,
+    headers: fixHeaders(req),
+  };
 
-		let upstream: Response = new Response("Internal Server Error", {
-			status: 500,
-		});
-		let currentUrl = finalUrl;
-		let host = new URL(currentUrl).hostname;
+  if (!["GET", "HEAD"].includes(req.method)) {
+    options.body = req.body;
+  }
 
-		const options: RequestInit = {
-			method: req.method,
-			mode: (req.headers.get("Sec-Fetch-Mode") as RequestMode) || "cors",
-			headers: fixHeaders(req),
-		};
+  let upstream: Response;
+  let redirects = 0;
+  const maxRedirects = 10;
 
-		if (!["GET", "HEAD"].includes(req.method)) {
-			options.body = await req.text();
-		}
+  while (true) {
+    upstream = await fetch(currentUrl, { ...options, redirect: "manual" });
 
-		let redirects = 0;
-		const maxRedirects = 10;
+    if (
+      upstream.status >= 300 &&
+      upstream.status < 400 &&
+      redirects < maxRedirects
+    ) {
+      const loc = upstream.headers.get("location");
+      if (loc) {
+        currentUrl = absolutify(loc, currentUrl);
+        redirects++;
+        continue;
+      }
+    }
+    break;
+  }
 
-		while (redirects < maxRedirects) {
-			upstream = await fetch(currentUrl, { ...options, redirect: "manual" });
+  /* ---------------------------- Handle content ---------------------------- */
+  const ct = upstream.headers.get("content-type") || "";
+  const sfd = (req.headers["sec-fetch-dest"] as string) || "";
 
-			if (upstream.status < 300 || upstream.status >= 400) break;
+  copyHeaders(upstream.headers, res);
+  res.status(upstream.status);
 
-			const loc = upstream.headers.get("location");
-			if (!loc) break;
+  // HTML
+  if (ct.includes("text/html")) {
+    const raw = await upstream.text();
+    const rewritten = await rewriteHtml(raw, finalUrl, host);
+    return res.send(rewritten);
+  }
 
-			currentUrl = absolutify(loc, currentUrl);
-			redirects++;
-		}
+  // CSS
+  if (sfd.includes("style") || ct.includes("text/css")) {
+    const raw = await upstream.text();
+    const rewritten = rewriteCss(raw, currentUrl);
+    res.setHeader("Content-Type", "text/css");
+    return res.send(rewritten);
+  }
 
-		/* ---------------------------- Handle content ---------------------------- */
+  // JS
+  if (sfd.includes("script") || ct.includes("javascript")) {
+    const raw = await upstream.text();
+    const rewritten = rewriteJs(raw, currentUrl, host);
+    res.setHeader("Content-Type", "application/javascript");
+    return res.send(rewritten);
+  }
 
-
-		const ct = upstream.headers.get("content-type") || "";
-		const sfd = req.headers.get("Sec-Fetch-Dest") || "";
-		const headers = removeCsp(upstream);
-
-		// HTML
-		if (ct.includes("text/html")) {
-			const raw = await upstream.text();
-			let rewritten = await rewriteHtml(raw, finalUrl, host);
-
-			return new Response(rewritten, { status: upstream.status, headers });
-		}
-
-		// CSS
-		if (sfd.includes("style")) {
-			const raw = await upstream.text();
-			const rewritten = rewriteCss(raw, currentUrl);
-			headers.set("Content-Type", "text/css");
-			return new Response(rewritten, { status: upstream.status, headers });
-		}
-
-		// JS
-		if (sfd.includes("script")) {
-			const raw = await upstream.text();
-			let rewritten = rewriteJs(raw, currentUrl, host);
-			headers.set("Content-Type", "application/javascript");
-			return new Response(rewritten, {
-				status: upstream.status,
-				headers,
-			});
-		}
-
-		// Stream everything else
-		return new Response(upstream.body, {
-			status: upstream.status,
-			headers,
-		});
-	},
+  if (upstream.body) {
+    const stream = Readable.fromWeb(upstream.body as any);
+    stream.pipe(res);
+  } else {
+    res.end();
+  }
 });
 
-console.log("Proxy running on port", PORT);
+app.listen(PORT, () => {
+  console.log(`Proxy running on port ${PORT}`);
+});
