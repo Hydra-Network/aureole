@@ -30,9 +30,9 @@ export function isUrl(u: string): boolean {
 export function proxify(url: string): string {
   url = decodeURIComponent(url);
   return url.match(/^(#|about:|data:|blob:|mailto:|javascript:|{|\*)/) ||
-    url.includes("/proxy")
+    url.includes("/aureole/")
     ? url
-    : `/proxy?q=${encodeURIComponent(url)}`;
+    : `/aureole/${encodeURIComponent(url)}`;
 }
 
 export function absolutify(url: string, base: string) {

@@ -22,7 +22,7 @@ if (false) {
 		paymentMiddleware(
 			"0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
 			{
-				"GET /proxy": {
+				"GET /aureole/*": {
 					price: "$1",
 					network: "abstract-testnet",
 					config: {
@@ -92,11 +92,11 @@ function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
 
 app.use(express.static("public"));
 
-app.all("/proxy", async (req: Request, res: ExResponse) => {
-	const target = req.query.q as string;
+app.all("/aureole/*", async (req: Request, res: ExResponse) => {
+	const target = req.params[0] as string;
 
 	if (!target) {
-		return res.status(400).send("Missing 'q' query parameter");
+		return res.status(400).send("Missing url");
 	}
 
 	const finalUrl = isUrl(target)
