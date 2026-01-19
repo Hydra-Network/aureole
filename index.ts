@@ -92,12 +92,12 @@ function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
 
 app.use(express.static("public"));
 
-app.all("/aureole/*", async (req: Request, res: ExResponse) => {
-	const target = req.params[0] as string;
+app.all("/aureole{/*input}", async (req: Request, res: ExResponse) => {
+	let target = req.params.input as string;
 
-	if (!target) {
-		return res.status(400).send("Missing url");
-	}
+	if (!target)
+		target = "https://search.brave.com"
+
 
 	const finalUrl = isUrl(target)
 		? target
