@@ -6,10 +6,7 @@ import { absolutify, isUrl } from "./src/utils.ts";
 import { rewriteHtml } from "./src/html.ts";
 import { Readable } from "stream";
 
-
-
 import { paymentMiddleware } from "x402-express";
-
 
 const app = express();
 const PORT = Number(process.env.PORT || 8080);
@@ -17,21 +14,17 @@ const PORT = Number(process.env.PORT || 8080);
 app.use(express.text({ type: "*/*", limit: "50mb" }));
 
 if (false) {
-
 	app.use(
-		paymentMiddleware(
-			"0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-			{
-				"GET /aureole/*": {
-					price: "$1",
-					network: "abstract-testnet",
-					config: {
-						description: "Proxy access to any URL",
-						mimeType: "text/html",
-					}
+		paymentMiddleware("0x70997970C51812dc3A010C7d01b50e0d17dc79C8", {
+			"GET /aureole/*": {
+				price: "$1",
+				network: "abstract-testnet",
+				config: {
+					description: "Proxy access to any URL",
+					mimeType: "text/html",
 				},
-			}
-		),
+			},
+		}),
 	);
 }
 function fixHeaders(req: Request): Record<string, string> {
@@ -93,11 +86,9 @@ function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
 app.use(express.static("public"));
 
 app.all("/aureole{/*input}", async (req: Request, res: ExResponse) => {
-	let target = req.params.input as string;
+	let target = atob(req.params.input as string);
 
-	if (!target)
-		target = "https://search.brave.com"
-
+	if (!target) target = "https://search.brave.com";
 
 	const finalUrl = isUrl(target)
 		? target

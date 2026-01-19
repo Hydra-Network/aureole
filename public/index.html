@@ -1,12 +1,13 @@
-<form
-  action="/proxy"
-  method="GET"
-  onsubmit="
-    const q = this.q;
-    if (q.value && !/^https?:\/\//i.test(q.value))
-      q.value = 'https://' + q.value;
-  "
->
-  <input type="text" name="q" placeholder="Enter URL to proxy..." />
-  <button type="submit">Go</button>
+<form onsubmit="
+    event.preventDefault(); 
+    let url = this.q.value.trim();
+    if (!url) return false;
+
+    if (!/^https?:\/\//i.test(url)) 
+        url = 'https://' + url;
+
+    window.location.href = '/aureole/' + btoa(url);
+">
+	<input type="text" name="q" placeholder="google.com" required />
+	<button type="submit">Go</button>
 </form>
