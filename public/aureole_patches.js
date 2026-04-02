@@ -28,7 +28,9 @@ if (!window.patched) {
                   const resolved = new URL(newAddr, cleanUrlObj.href).href;
                   window.location[prop](
                     "/aureole/" +
-                      btoa(resolved).replace(/\+/g, "-").replace(/\//g, "_"),
+                      btoa(encodeURIComponent(resolved))
+                        .replace(/\+/g, "-")
+                        .replace(/\//g, "_"),
                   );
                 };
               }
@@ -51,12 +53,14 @@ if (!window.patched) {
                 const resolved = new URL(val, cleanUrlObj.href).href;
                 window.location.href =
                   "/aureole/" +
-                  btoa(resolved).replace(/\+/g, "-").replace(/\//g, "_");
+                  btoa(encodeURIComponent(resolved))
+                    .replace(/\+/g, "-")
+                    .replace(/\//g, "_");
               } else if (prop in cleanUrlObj) {
                 cleanUrlObj[prop] = val;
                 window.location.href =
                   "/aureole/" +
-                  btoa(cleanUrlObj.href)
+                  btoa(encodeURIComponent(cleanUrlObj.href))
                     .replace(/\+/g, "-")
                     .replace(/\//g, "_");
               }
@@ -71,7 +75,10 @@ if (!window.patched) {
           window.location.href;
         const resolved = new URL(val, cleanUrlObj.href).href;
         window.location.href =
-          "/aureole/" + btoa(resolved).replace(/\+/g, "-").replace(/\//g, "_");
+          "/aureole/" +
+          btoa(encodeURIComponent(resolved))
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_");
       },
       configurable: true,
     });
@@ -89,7 +96,8 @@ if (!window.patched) {
 
     return isExcluded || isProxied
       ? url
-      : "/aureole/" + btoa(url).replace(/\+/g, "-").replace(/\//g, "_");
+      : "/aureole/" +
+          btoa(encodeURIComponent(url)).replace(/\+/g, "-").replace(/\//g, "_");
   }
 
   XMLHttpRequest.prototype.open = function (

@@ -97,7 +97,7 @@ app.all("/aureole{/*input}", async (req: Request, res: ExResponse) => {
       : req.params.input;
     const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64 + "==".slice(0, (4 - (base64.length % 4)) % 4);
-    target = atob(padded);
+    target = decodeURIComponent(atob(padded));
   } catch {
     return res.status(400).send("Invalid base64 input");
   }

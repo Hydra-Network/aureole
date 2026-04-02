@@ -27,12 +27,16 @@ export function isUrl(u: string): boolean {
   }
 }
 
+function encodeUrl(url: string): string {
+  return btoa(encodeURIComponent(url)).replace(/\+/g, "-").replace(/\//g, "_");
+}
+
 export function proxify(url: string): string {
   url = decodeURIComponent(url);
   return url.match(/^(#|about:|data:|blob:|mailto:|javascript:|{|\*)/) ||
     url.includes("/aureole/")
     ? url
-    : `/aureole/${btoa(url).replace(/\+/g, "-").replace(/\//g, "_")}`;
+    : `/aureole/${encodeUrl(url)}`;
 }
 
 export function absolutify(url: string, base: string) {
