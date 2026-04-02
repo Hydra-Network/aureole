@@ -105,7 +105,7 @@ export function rewriteHtml(
       if (rewritten.includes("</head>")) {
         rewritten = rewritten.replace(
           "</head>",
-          '<script src="/aureole_patches.js"></script></head>',
+          '<script src="/aureole/aureole_patches.js"></script></head>',
         );
       }
       resolve(rewritten);

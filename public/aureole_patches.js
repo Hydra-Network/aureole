@@ -27,7 +27,8 @@ if (!window.patched) {
                 return (newAddr) => {
                   const resolved = new URL(newAddr, cleanUrlObj.href).href;
                   window.location[prop](
-                    "/proxy?q=" + encodeURIComponent(resolved),
+                    "/aureole/" +
+                      btoa(resolved).replace(/\+/g, "-").replace(/\//g, "_"),
                   );
                 };
               }
@@ -49,11 +50,15 @@ if (!window.patched) {
               if (prop === "href") {
                 const resolved = new URL(val, cleanUrlObj.href).href;
                 window.location.href =
-                  "/proxy?q=" + encodeURIComponent(resolved);
+                  "/aureole/" +
+                  btoa(resolved).replace(/\+/g, "-").replace(/\//g, "_");
               } else if (prop in cleanUrlObj) {
                 cleanUrlObj[prop] = val;
                 window.location.href =
-                  "/proxy?q=" + encodeURIComponent(cleanUrlObj.href);
+                  "/aureole/" +
+                  btoa(cleanUrlObj.href)
+                    .replace(/\+/g, "-")
+                    .replace(/\//g, "_");
               }
               return true;
             },
@@ -64,8 +69,9 @@ if (!window.patched) {
         const cleanUrlString =
           new URLSearchParams(window.location.search).get("q") ||
           window.location.href;
-        const resolved = new URL(val, cleanUrlString).href;
-        window.location.href = "/proxy?q=" + encodeURIComponent(resolved);
+        const resolved = new URL(val, cleanUrlObj.href).href;
+        window.location.href =
+          "/aureole/" + btoa(resolved).replace(/\+/g, "-").replace(/\//g, "_");
       },
       configurable: true,
     });
@@ -79,11 +85,11 @@ if (!window.patched) {
     const isExcluded = /^(#|about:|data:|blob:|mailto:|javascript:|\{|\*)/.test(
       url,
     );
-    const isProxied = url.includes("/proxy?q=");
+    const isProxied = url.includes("/aureole/");
 
     return isExcluded || isProxied
       ? url
-      : "/proxy?q=" + encodeURIComponent(url);
+      : "/aureole/" + btoa(url).replace(/\+/g, "-").replace(/\//g, "_");
   }
 
   XMLHttpRequest.prototype.open = function (

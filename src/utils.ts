@@ -32,7 +32,7 @@ export function proxify(url: string): string {
   return url.match(/^(#|about:|data:|blob:|mailto:|javascript:|{|\*)/) ||
     url.includes("/aureole/")
     ? url
-    : `/aureole/${encodeURIComponent(url)}`;
+    : `/aureole/${btoa(url).replace(/\+/g, "-").replace(/\//g, "_")}`;
 }
 
 export function absolutify(url: string, base: string) {

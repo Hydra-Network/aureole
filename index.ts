@@ -14,69 +14,69 @@ const PORT = Number(process.env.PORT || 8080);
 app.use(express.text({ type: "*/*", limit: "50mb" }));
 
 if (false) {
-	app.use(
-		paymentMiddleware("0x70997970C51812dc3A010C7d01b50e0d17dc79C8", {
-			"GET /aureole/*": {
-				price: "$1",
-				network: "abstract-testnet",
-				config: {
-					description: "Proxy access to any URL",
-					mimeType: "text/html",
-				},
-			},
-		}),
-	);
+  app.use(
+    paymentMiddleware("0x70997970C51812dc3A010C7d01b50e0d17dc79C8", {
+      "GET /aureole/*": {
+        price: "$1",
+        network: "abstract-testnet",
+        config: {
+          description: "Proxy access to any URL",
+          mimeType: "text/html",
+        },
+      },
+    }),
+  );
 }
 function fixHeaders(req: Request): Record<string, string> {
-	const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {};
 
-	Object.entries(req.headers).forEach(([key, value]) => {
-		const lowerKey = key.toLowerCase();
-		if (
-			![
-				"host",
-				"transfer-encoding",
-				"content-encoding",
-				"content-security-policy",
-				"x-content-security-policy",
-				"x-webkit-csp",
-				"origin",
-				"referer",
-			].includes(lowerKey)
-		) {
-			if (value) headers[key] = Array.isArray(value) ? value.join(", ") : value;
-		}
-	});
+  Object.entries(req.headers).forEach(([key, value]) => {
+    const lowerKey = key.toLowerCase();
+    if (
+      ![
+        "host",
+        "transfer-encoding",
+        "content-encoding",
+        "content-security-policy",
+        "x-content-security-policy",
+        "x-webkit-csp",
+        "origin",
+        "referer",
+      ].includes(lowerKey)
+    ) {
+      if (value) headers[key] = Array.isArray(value) ? value.join(", ") : value;
+    }
+  });
 
-	headers["user-agent"] =
-		headers["user-agent"] ||
-		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
-	headers["accept"] =
-		headers["accept"] ||
-		"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
-	headers["accept-language"] = headers["accept-language"] || "en-US,en;q=0.9";
-	headers["accept-encoding"] =
-		headers["accept-encoding"] || "gzip, deflate, br";
+  headers["user-agent"] =
+    headers["user-agent"] ||
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+  headers["accept"] =
+    headers["accept"] ||
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+  headers["accept-language"] = headers["accept-language"] || "en-US,en;q=0.9";
+  headers["accept-encoding"] =
+    headers["accept-encoding"] || "gzip, deflate, br";
 
-	return headers;
+  return headers;
 }
 
 function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
-	upstreamHeaders.forEach((value, key) => {
-		const lowerKey = key.toLowerCase();
-		if (
-			![
-				"transfer-encoding",
-				"content-encoding",
-				"content-security-policy",
-				"x-content-security-policy",
-				"content-security-policy-report-only",
-				"x-webkit-csp",
-			].includes(lowerKey)
-		) {
-			res.setHeader(key, value);
-		}
-	});
+  upstreamHeaders.forEach((value, key) => {
+    const lowerKey = key.toLowerCase();
+    if (
+      ![
+        "transfer-encoding",
+        "content-encoding",
+        "content-security-policy",
+        "x-content-security-policy",
+        "content-security-policy-report-only",
+        "x-webkit-csp",
+      ].includes(lowerKey)
+    ) {
+      res.setHeader(key, value);
+    }
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -85,95 +85,109 @@ function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
 
 app.use(express.static("public"));
 
+app.get("/aureole/aureole_patches.js", (_req, res) => {
+  res.sendFile("aureole_patches.js", { root: "public" });
+});
+
 app.all("/aureole{/*input}", async (req: Request, res: ExResponse) => {
-	let target = atob(req.params.input as string);
+  let target = "";
+  try {
+    const input = Array.isArray(req.params.input)
+      ? req.params.input[0]
+      : req.params.input;
+    const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "==".slice(0, (4 - (base64.length % 4)) % 4);
+    target = atob(padded);
+  } catch {
+    return res.status(400).send("Invalid base64 input");
+  }
 
-	if (!target) target = "https://search.brave.com";
+  if (!target) target = "https://search.brave.com";
 
-	const finalUrl = isUrl(target)
-		? target
-		: isUrl("http://" + target)
-			? "http://" + target
-			: null;
+  const finalUrl = isUrl(target)
+    ? target
+    : isUrl("http://" + target)
+      ? "http://" + target
+      : null;
 
-	if (!finalUrl) {
-		return res.status(400).send("Invalid or blocked URL");
-	}
+  if (!finalUrl) {
+    return res.status(400).send("Invalid or blocked URL");
+  }
 
-	/* ----------------------------- Fetch upstream ---------------------------- */
+  /* ----------------------------- Fetch upstream ---------------------------- */
 
-	let currentUrl = finalUrl;
-	let host = new URL(currentUrl).hostname;
+  let currentUrl = finalUrl;
+  let host = new URL(currentUrl).hostname;
 
-	const options: RequestInit = {
-		method: req.method,
-		headers: fixHeaders(req),
-	};
+  const options: RequestInit = {
+    method: req.method,
+    headers: fixHeaders(req),
+  };
 
-	if (!["GET", "HEAD"].includes(req.method)) {
-		options.body = req.body;
-	}
+  if (!["GET", "HEAD"].includes(req.method)) {
+    options.body = req.body;
+  }
 
-	let upstream: Response;
-	let redirects = 0;
-	const maxRedirects = 10;
+  let upstream: Response;
+  let redirects = 0;
+  const maxRedirects = 10;
 
-	while (true) {
-		upstream = await fetch(currentUrl, { ...options, redirect: "manual" });
+  while (true) {
+    upstream = await fetch(currentUrl, { ...options, redirect: "manual" });
 
-		if (
-			upstream.status >= 300 &&
-			upstream.status < 400 &&
-			redirects < maxRedirects
-		) {
-			const loc = upstream.headers.get("location");
-			if (loc) {
-				currentUrl = absolutify(loc, currentUrl);
-				redirects++;
-				continue;
-			}
-		}
-		break;
-	}
+    if (
+      upstream.status >= 300 &&
+      upstream.status < 400 &&
+      redirects < maxRedirects
+    ) {
+      const loc = upstream.headers.get("location");
+      if (loc) {
+        currentUrl = absolutify(loc, currentUrl);
+        redirects++;
+        continue;
+      }
+    }
+    break;
+  }
 
-	/* ---------------------------- Handle content ---------------------------- */
-	const ct = upstream.headers.get("content-type") || "";
-	const sfd = (req.headers["sec-fetch-dest"] as string) || "";
+  /* ---------------------------- Handle content ---------------------------- */
+  const ct = upstream.headers.get("content-type") || "";
+  const sfd = (req.headers["sec-fetch-dest"] as string) || "";
 
-	copyHeaders(upstream.headers, res);
-	res.status(upstream.status);
+  copyHeaders(upstream.headers, res);
+  res.status(upstream.status);
 
-	// HTML
-	if (ct.includes("text/html")) {
-		const raw = await upstream.text();
-		const rewritten = await rewriteHtml(raw, finalUrl, host);
-		return res.send(rewritten);
-	}
+  // HTML
+  if (ct.includes("text/html")) {
+    const raw = await upstream.text();
+    const rewritten = await rewriteHtml(raw, finalUrl, host);
+    return res.send(rewritten);
+  }
 
-	// CSS
-	if (sfd.includes("style") || ct.includes("text/css")) {
-		const raw = await upstream.text();
-		const rewritten = rewriteCss(raw, currentUrl);
-		res.setHeader("Content-Type", "text/css");
-		return res.send(rewritten);
-	}
+  // CSS
+  if (sfd.includes("style") || ct.includes("text/css")) {
+    const raw = await upstream.text();
+    const rewritten = rewriteCss(raw, currentUrl);
+    res.setHeader("Content-Type", "text/css");
+    return res.send(rewritten);
+  }
 
-	// JS
-	if (sfd.includes("script") || ct.includes("javascript")) {
-		const raw = await upstream.text();
-		const rewritten = rewriteJs(raw, currentUrl, host);
-		res.setHeader("Content-Type", "application/javascript");
-		return res.send(rewritten);
-	}
+  // JS
+  if (sfd.includes("script") || ct.includes("javascript")) {
+    const raw = await upstream.text();
+    const rewritten = rewriteJs(raw, currentUrl, host);
+    res.setHeader("Content-Type", "application/javascript");
+    return res.send(rewritten);
+  }
 
-	if (upstream.body) {
-		const stream = Readable.fromWeb(upstream.body as any);
-		stream.pipe(res);
-	} else {
-		res.end();
-	}
+  if (upstream.body) {
+    const stream = Readable.fromWeb(upstream.body as any);
+    stream.pipe(res);
+  } else {
+    res.end();
+  }
 });
 
 app.listen(PORT, () => {
-	console.log(`Proxy running on port ${PORT}`);
+  console.log(`Proxy running on port ${PORT}`);
 });
