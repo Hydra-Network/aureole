@@ -1,6 +1,19 @@
 if (!window.patched) {
   window.patched = true;
 
+  function getOriginalTarget() {
+    const pathname = window.location.pathname;
+    const match = pathname.match(/^\/aureole\/(.+)$/);
+    if (!match) return null;
+    const base64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "==".slice(0, (4 - (base64.length % 4)) % 4);
+    try {
+      return decodeURIComponent(atob(padded));
+    } catch {
+      return null;
+    }
+  }
+
   function proxify(url) {
     url = decodeURIComponent(url);
     const isExcluded = /^(#|about:|data:|blob:|mailto:|javascript:|\{|\*)/.test(
@@ -8,10 +21,28 @@ if (!window.patched) {
     );
     const isProxied = url.includes("/aureole/");
 
-    return isExcluded || isProxied
-      ? url
-      : "/aureole/" +
-          btoa(encodeURIComponent(url)).replace(/\+/g, "-").replace(/\//g, "_");
+    if (isExcluded || isProxied) return url;
+
+    const originalTarget = getOriginalTarget();
+    let absoluteUrl = url;
+
+    try {
+      new URL(url);
+      absoluteUrl = url;
+    } catch {
+      if (originalTarget) {
+        absoluteUrl = new URL(url, originalTarget).href;
+      } else {
+        absoluteUrl = new URL(url, location.href).href;
+      }
+    }
+
+    return (
+      "/aureole/" +
+      btoa(encodeURIComponent(absoluteUrl))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+    );
   }
 
   [window, document].forEach((targetParent) => {
@@ -21,10 +52,9 @@ if (!window.patched) {
           {},
           {
             get(_, prop) {
-              const cleanUrlString =
-                new URLSearchParams(window.location.search).get("q") ||
-                window.location.href;
-              const cleanUrlObj = new URL(cleanUrlString);
+              const originalTarget = getOriginalTarget();
+              if (!originalTarget) return undefined;
+              const cleanUrlObj = new URL(originalTarget);
 
               if (
                 prop === "href" ||
@@ -57,23 +87,23 @@ if (!window.patched) {
             },
 
             set(_, prop, val) {
-              const cleanUrlString =
-                new URLSearchParams(window.location.search).get("q") ||
-                window.location.href;
-              const cleanUrlObj = new URL(cleanUrlString);
+              const originalTarget = getOriginalTarget();
+              const base = originalTarget || window.location.href;
+              const cleanUrlObj = new URL(base);
 
               if (prop === "href") {
-                const resolved = new URL(val, cleanUrlObj.href).href;
+                const resolved = new URL(val, base).href;
                 window.location.href =
                   "/aureole/" +
                   btoa(encodeURIComponent(resolved))
                     .replace(/\+/g, "-")
                     .replace(/\//g, "_");
               } else if (prop in cleanUrlObj) {
-                cleanUrlObj[prop] = val;
+                const updated = new URL(base);
+                updated[prop] = val;
                 window.location.href =
                   "/aureole/" +
-                  btoa(encodeURIComponent(cleanUrlObj.href))
+                  btoa(encodeURIComponent(updated.href))
                     .replace(/\+/g, "-")
                     .replace(/\//g, "_");
               }
@@ -86,7 +116,9 @@ if (!window.patched) {
         const cleanUrlString =
           new URLSearchParams(window.location.search).get("q") ||
           window.location.href;
-        const resolved = new URL(val, cleanUrlObj.href).href;
+        const originalTarget = getOriginalTarget();
+        const base = originalTarget || cleanUrlString;
+        const resolved = new URL(val, base).href;
         window.location.href =
           "/aureole/" +
           btoa(encodeURIComponent(resolved))
@@ -119,13 +151,7 @@ if (!window.patched) {
       const newReq = new Request(proxify(input.url), input);
       return oldFetch(newReq, init);
     }
-
-    let url = typeof input === "string" ? input : input.toString();
-    try {
-      new URL(url);
-    } catch (e) {
-      url = new URL(url, location.origin).href;
-    }
+    const url = typeof input === "string" ? input : input.toString();
     return oldFetch(proxify(url), init);
   };
 }

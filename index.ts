@@ -110,6 +110,10 @@ app.all("/aureole{/*input}", async (req: Request, res: ExResponse) => {
       ? "http://" + target
       : null;
 
+  // console.log(finalUrl);
+  console.log(target);
+  console.log(isUrl(target));
+
   if (!finalUrl) {
     return res.status(400).send("Invalid or blocked URL");
   }
