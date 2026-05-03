@@ -83,8 +83,6 @@ function copyHeaders(upstreamHeaders: Headers, res: ExResponse) {
 /*                                    SERVER                                  */
 /* -------------------------------------------------------------------------- */
 
-app.use(express.static("public"));
-
 app.get("/aureole/aureole_patches.js", (_req, res) => {
   res.sendFile("aureole_patches.js", { root: "public" });
 });
@@ -192,6 +190,7 @@ app.all("/aureole{/*input}", async (req: Request, res: ExResponse) => {
   }
 });
 
+app.use(express.static("public"));
 app.listen(PORT, () => {
   console.log(`Proxy running on port ${PORT}`);
 });
