@@ -3,10 +3,12 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
+    "dev": "nodemon --watch . --watch public --ext ts,js,html,css --exec bun index.ts",
     "format": "prettier . -w"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "nodemon": "^3.1.14",
     "prettier": "^3.7.4"
   },
   "peerDependencies": {
