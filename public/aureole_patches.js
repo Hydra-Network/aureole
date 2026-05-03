@@ -1,6 +1,19 @@
 if (!window.patched) {
   window.patched = true;
 
+  function proxify(url) {
+    url = decodeURIComponent(url);
+    const isExcluded = /^(#|about:|data:|blob:|mailto:|javascript:|\{|\*)/.test(
+      url,
+    );
+    const isProxied = url.includes("/aureole/");
+
+    return isExcluded || isProxied
+      ? url
+      : "/aureole/" +
+          btoa(encodeURIComponent(url)).replace(/\+/g, "-").replace(/\//g, "_");
+  }
+
   [window, document].forEach((targetParent) => {
     Object.defineProperty(targetParent, "proxyLocation", {
       get: function () {
@@ -86,19 +99,6 @@ if (!window.patched) {
 
   const oldOpen = XMLHttpRequest.prototype.open;
   const oldFetch = window.fetch;
-
-  function proxify(url) {
-    url = decodeURIComponent(url);
-    const isExcluded = /^(#|about:|data:|blob:|mailto:|javascript:|\{|\*)/.test(
-      url,
-    );
-    const isProxied = url.includes("/aureole/");
-
-    return isExcluded || isProxied
-      ? url
-      : "/aureole/" +
-          btoa(encodeURIComponent(url)).replace(/\+/g, "-").replace(/\//g, "_");
-  }
 
   XMLHttpRequest.prototype.open = function (
     method,
